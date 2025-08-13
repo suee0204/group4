@@ -1,0 +1,166 @@
+# Smart Fire Alert System - Multi-stage Combined Dockerfile
+# This uses multi-stage builds for better optimization and flexibility
+
+# =============================================================================
+# Stage 1: Base Dependencies
+# =============================================================================
+FROM arm32v7/python:3.9-slim-bullseye AS base
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install common system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3-dev \
+    libssl-dev \
+    libffi-dev \
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy and install Python requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# =============================================================================
+# Stage 2: IoT-specific dependencies
+# =============================================================================
+FROM base AS iot-deps
+
+# Install IoT-specific system dependencies
+RUN apt-get update && apt-get install -y \
+    # Camera and media libraries
+    libcamera-dev \
+    libcamera-apps \
+    python3-libcamera \
+    # GPIO and hardware libraries
+    libi2c-dev \
+    i2c-tools \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# =============================================================================
+# Stage 3: Web-specific dependencies  
+# =============================================================================
+FROM base AS web-deps
+
+# Install web-specific system dependencies
+RUN apt-get update && apt-get install -y \
+    # MySQL client libraries
+    default-libmysqlclient-dev \
+    pkg-config \
+    # Process management
+    supervisor \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# =============================================================================
+# Stage 4: Combined Application (Final Stage)
+# =============================================================================
+FROM base AS combined
+
+# Set maintainer information
+LABEL maintainer="Smart Fire Alert System Team"
+LABEL description="Combined IoT and Web Fire Alert System - Multi-stage"
+LABEL version="2.0"
+
+# Install ALL dependencies for combined functionality
+RUN apt-get update && apt-get install -y \
+    # Camera and media libraries (IoT)
+    libcamera-dev \
+    libcamera-apps \
+    python3-libcamera \
+    # GPIO and hardware libraries (IoT)
+    libi2c-dev \
+    i2c-tools \
+    # MySQL client libraries (Web)
+    default-libmysqlclient-dev \
+    pkg-config \
+    # Process management
+    supervisor \
+    # Network tools
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy HAL modules
+COPY src/hal/ ./hal/
+
+# Copy all source code
+COPY src/ ./
+
+# Copy configuration files
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY start-*.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/start-*.sh
+
+# Create application user
+RUN groupadd -r fireapp && useradd -r -g fireapp fireuser && \
+    chown -R fireuser:fireapp /app
+
+# Switch to non-root user
+USER fireuser
+
+# Expose ports
+EXPOSE 5000 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:5000/ 2>/dev/null || python -c "import sys; sys.exit(0)" || exit 1
+
+# Default command
+CMD ["/usr/local/bin/start-combined.sh"]
+
+# =============================================================================
+# Stage 5: IoT-only variant
+# =============================================================================
+FROM iot-deps AS iot-only
+
+LABEL description="IoT-only Fire Detection System"
+
+# Copy HAL modules and IoT source code
+COPY src/hal/ ./hal/
+COPY src/Main.py src/AlertSystem.py src/TempSmoke.py src/PiCam.py src/RemoteAccess.py ./
+
+# Create user and set permissions
+RUN groupadd -r iot && useradd -r -g iot iotuser && \
+    chown -R iotuser:iot /app && \
+    mkdir -p static
+
+USER iotuser
+EXPOSE 8080
+
+CMD ["python", "Main.py"]
+
+# =============================================================================
+# Stage 6: Web-only variant
+# =============================================================================
+FROM web-deps AS web-only
+
+LABEL description="Web-only Fire Alert Interface"
+
+# Set Flask environment
+ENV FLASK_APP=App.py
+ENV FLASK_ENV=production
+
+# Copy web source code and templates
+COPY src/App.py src/AlertSystem.py src/TempSmoke.py ./
+COPY src/templates/ ./templates/
+COPY src/static/ ./static/
+COPY src/*.sql ./
+
+# Create user and set permissions
+RUN groupadd -r webapp && useradd -r -g webapp webuser && \
+    chown -R webuser:webapp /app
+
+USER webuser
+EXPOSE 5000
+
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "App:app"]
