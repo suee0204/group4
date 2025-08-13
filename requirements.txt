@@ -1,0 +1,9 @@
+Flask==3.0.3
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.32
+PyMySQL==1.1.1
+requests==2.32.3
+# Production WSGI server for the web API
+gunicorn==22.0.0
+# GPIO access for Raspberry Pi (used by HAL)
+RPi.GPIO==0.7.1
