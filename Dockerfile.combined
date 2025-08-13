@@ -1,0 +1,98 @@
+# Smart Fire Alert System - Combined Dockerfile
+# This Dockerfile combines both IoT and Web functionality in a single container
+
+FROM arm32v7/python:3.9-slim-bullseye
+
+# Set maintainer information
+LABEL maintainer="Smart Fire Alert System Team"
+LABEL description="Combined IoT and Web Fire Alert System"
+LABEL version="1.0"
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV DEBIAN_FRONTEND=noninteractive
+ENV FLASK_APP=App.py
+ENV FLASK_ENV=production
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies for both IoT hardware and web application
+RUN apt-get update && apt-get install -y \
+    # Camera and media libraries (IoT)
+    libcamera-dev \
+    libcamera-apps \
+    python3-libcamera \
+    # GPIO and hardware libraries (IoT)
+    build-essential \
+    python3-dev \
+    # MySQL client libraries (Web)
+    default-libmysqlclient-dev \
+    pkg-config \
+    # Network and SSL
+    libssl-dev \
+    libffi-dev \
+    # Network tools
+    curl \
+    # Supervisor for process management
+    supervisor \
+    # Cleanup
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy the HAL (Hardware Abstraction Layer) modules
+COPY src/hal/ ./hal/
+
+# Copy all application source code
+COPY src/Main.py .
+COPY src/App.py .
+COPY src/AlertSystem.py .
+COPY src/TempSmoke.py .
+COPY src/PiCam.py .
+COPY src/RemoteAccess.py .
+
+# Copy web templates and static files
+COPY src/templates/ ./templates/
+COPY src/static/ ./static/
+
+# Copy database initialization scripts
+COPY src/on-duty.sql .
+COPY src/off-duty.sql .
+
+# Create supervisor configuration
+RUN mkdir -p /etc/supervisor/conf.d
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Create startup scripts
+COPY start-iot.sh /usr/local/bin/start-iot.sh
+COPY start-web.sh /usr/local/bin/start-web.sh
+COPY start-combined.sh /usr/local/bin/start-combined.sh
+RUN chmod +x /usr/local/bin/start-*.sh
+
+# Create non-root user for security
+RUN groupadd -r fireapp && useradd -r -g fireapp fireuser
+RUN chown -R fireuser:fireapp /app
+USER fireuser
+
+# Expose ports for both services
+EXPOSE 5000 8080
+
+# Health check for both services
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:5000/ || python -c "import sys; sys.exit(0)" || exit 1
+
+# Default command - can be overridden
+CMD ["/usr/local/bin/start-combined.sh"]
+
+# Usage examples:
+# docker run -it --privileged smart-fire-combined                    # Run both services
+# docker run -it --privileged smart-fire-combined start-iot.sh       # IoT only
+# docker run -it --privileged smart-fire-combined start-web.sh       # Web only
+# docker run -it --privileged smart-fire-combined python Main.py     # Direct IoT
+# docker run -it --privileged smart-fire-combined python App.py      # Direct Web
