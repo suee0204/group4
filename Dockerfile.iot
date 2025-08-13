@@ -1,0 +1,70 @@
+# Smart Fire Alert System - IoT Application Dockerfile
+# This Dockerfile is optimized for Raspberry Pi ARM architecture
+
+FROM arm32v7/python:3.9-slim-bullseye
+
+# Set maintainer information
+LABEL maintainer="Smart Fire Alert System Team"
+LABEL description="IoT Fire Detection System with Hardware Integration"
+LABEL version="1.0"
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies for camera, GPIO, and hardware
+RUN apt-get update && apt-get install -y \
+    # Camera and media libraries
+    libcamera-dev \
+    libcamera-apps \
+    python3-libcamera \
+    # GPIO and hardware libraries
+    build-essential \
+    python3-dev \
+    # Network and SSL
+    libssl-dev \
+    libffi-dev \
+    # Cleanup
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy the HAL (Hardware Abstraction Layer) modules
+COPY src/hal/ ./hal/
+
+# Copy the main application source code
+COPY src/Main.py .
+COPY src/AlertSystem.py .
+COPY src/TempSmoke.py .
+COPY src/PiCam.py .
+COPY src/RemoteAccess.py .
+
+# Create directory for captured images
+RUN mkdir -p static
+
+# Set permissions for hardware access (if needed)
+RUN groupadd -r iot && useradd -r -g iot iotuser
+RUN chown -R iotuser:iot /app
+USER iotuser
+
+# Expose port for potential web interface
+EXPOSE 8080
+
+# Health check for the IoT application
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)" || exit 1
+
+# Default command to run the IoT application
+CMD ["python", "Main.py"]
+
+# Alternative commands for different modes:
+# Development mode: docker run -it --device=/dev/gpiomem smart-fire-iot python Main.py
+# Test mode: docker run -it smart-fire-iot python -m pytest

@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # Development overrides for Flask Web Application
+  web-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      target: development  # If multi-stage build is used
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - SQLALCHEMY_DATABASE_URI=mysql+pymysql://webapp:passworddevops3321@mysql-db:3306/firefighters
+    volumes:
+      # Mount source code for live reload
+      - ./src:/app:ro
+      - ./src/templates:/app/templates:ro
+      - ./src/static:/app/static
+    command: ["python", "App.py"]
+    ports:
+      - "5000:5000"
+      - "5678:5678"  # Debug port
+
+  # Development overrides for IoT Application  
+  iot-app:
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEBUG=1
+    volumes:
+      # Mount source code for development
+      - ./src:/app:ro
+      - ./src/static:/app/static
+    # Override command for development/testing
+    command: ["python", "-u", "Main.py"]
+
+  # Development database with exposed port
+  mysql-db:
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: passworddevops3321
+      MYSQL_DATABASE: firefighters
+      MYSQL_USER: webapp
+      MYSQL_PASSWORD: passworddevops3321
+    volumes:
+      # Use local directory for persistence in development
+      - ./mysql_dev_data:/var/lib/mysql
+      - ./src/on-duty.sql:/docker-entrypoint-initdb.d/1-on-duty.sql
+      - ./src/off-duty.sql:/docker-entrypoint-initdb.d/2-off-duty.sql
+
+  # Development Redis with exposed port
+  redis:
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --loglevel debug
+
+# Development usage:
+# docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+# This will override production settings with development-friendly configurations

@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  # MySQL Database Service
+  mysql-db:
+    image: mysql:8.0
+    container_name: smart-fire-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: passworddevops3321
+      MYSQL_DATABASE: firefighters
+      MYSQL_USER: webapp
+      MYSQL_PASSWORD: passworddevops3321
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./src/on-duty.sql:/docker-entrypoint-initdb.d/1-on-duty.sql
+      - ./src/off-duty.sql:/docker-entrypoint-initdb.d/2-off-duty.sql
+    networks:
+      - fire-alert-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Flask Web Application Service
+  web-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: smart-fire-web
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - FLASK_DEBUG=0
+      - SQLALCHEMY_DATABASE_URI=mysql+pymysql://webapp:passworddevops3321@mysql-db:3306/firefighters
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+    volumes:
+      - ./src/static:/app/static
+    networks:
+      - fire-alert-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # IoT Fire Detection Service (for Raspberry Pi)
+  iot-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.iot
+    container_name: smart-fire-iot
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/gpiomem:/dev/gpiomem
+      - /dev/i2c-1:/dev/i2c-1
+      - /dev/spidev0.0:/dev/spidev0.0
+      - /dev/spidev0.1:/dev/spidev0.1
+    volumes:
+      - /opt/vc:/opt/vc:ro
+      - ./src/static:/app/static
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - fire-alert-network
+    # Note: This service is designed for Raspberry Pi hardware
+    # Comment out or remove if running on non-Pi systems
+
+  # Redis Cache Service (optional for session management)
+  redis:
+    image: redis:7-alpine
+    container_name: smart-fire-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - fire-alert-network
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  # Nginx Reverse Proxy (optional for production)
+  nginx:
+    image: nginx:alpine
+    container_name: smart-fire-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - web-app
+    networks:
+      - fire-alert-network
+    # Note: Uncomment this service if you have nginx.conf configured
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  fire-alert-network:
+    driver: bridge
+
+# Development override file usage:
+# docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+# Production deployment commands:
+# docker-compose up -d                    # Start all services
+# docker-compose up -d web-app mysql-db   # Start only web services
+# docker-compose logs -f web-app          # View web app logs
+# docker-compose exec web-app python -c "from App import db; db.create_all()"  # Initialize database

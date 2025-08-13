@@ -1,0 +1,103 @@
+# Git and version control
+.git/
+.gitignore
+.gitmodules
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+mysql_dev_data/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# IDE files
+*.sublime-project
+*.sublime-workspace
+
+# Docker files (don't include other Dockerfiles in builds)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Large media files (exclude from builds)
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.mp4
+*.avi
+*.mov
+
+# Configuration files with secrets
+.env.local
+.env.production
+secrets.yml
