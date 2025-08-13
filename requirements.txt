@@ -1,0 +1,21 @@
+# Core web framework
+Flask>=2.3
+
+# ORM and MySQL driver used by the app
+Flask-SQLAlchemy>=3.1
+SQLAlchemy>=2.0
+PyMySQL>=1.1
+
+# HTTP client used by RemoteAccess
+requests>=2.31
+
+# Production WSGI server
+gunicorn>=21.2
+
+# Testing (optional)
+pytest>=8.0
+
+# Raspberry Pi camera and hardware stack (only on Raspberry Pi OS; DO NOT install on regular Linux/Windows/macOS)
+# picamera2  # Provided by Raspberry Pi OS repositories; not installable via PyPI in generic environments
+# rpi-lgpio
+# libcamera
