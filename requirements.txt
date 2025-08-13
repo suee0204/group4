@@ -1,0 +1,7 @@
+Flask==2.3.3
+Flask-SQLAlchemy==3.1.1
+PyMySQL==1.1.0
+requests==2.31.0
+picamera2==0.3.16
+gunicorn==21.2.0
+python-telegram-bot==20.6
