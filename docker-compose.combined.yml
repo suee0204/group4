@@ -1,0 +1,140 @@
+version: '3.8'
+
+services:
+  # Option 1: Single container running both IoT and Web services
+  fire-alert-combined:
+    build:
+      context: .
+      dockerfile: Dockerfile.combined
+    container_name: smart-fire-combined
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/gpiomem:/dev/gpiomem
+      - /dev/i2c-1:/dev/i2c-1
+    ports:
+      - "5000:5000"
+      - "8080:8080"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FLASK_ENV=production
+      - SQLALCHEMY_DATABASE_URI=mysql+pymysql://webapp:passworddevops3321@mysql-db:3306/firefighters
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+    volumes:
+      - /opt/vc:/opt/vc:ro
+      - ./src/static:/app/static
+    networks:
+      - fire-alert-network
+
+  # Option 2: Multi-stage build - IoT only service
+  fire-alert-iot-only:
+    build:
+      context: .
+      dockerfile: Dockerfile.multistage
+      target: iot-only
+    container_name: smart-fire-iot-only
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/gpiomem:/dev/gpiomem
+      - /dev/i2c-1:/dev/i2c-1
+    volumes:
+      - /opt/vc:/opt/vc:ro
+      - ./src/static:/app/static
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - fire-alert-network
+    profiles:
+      - iot-only
+
+  # Option 3: Multi-stage build - Web only service
+  fire-alert-web-only:
+    build:
+      context: .
+      dockerfile: Dockerfile.multistage
+      target: web-only
+    container_name: smart-fire-web-only
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - FLASK_DEBUG=0
+      - SQLALCHEMY_DATABASE_URI=mysql+pymysql://webapp:passworddevops3321@mysql-db:3306/firefighters
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+    volumes:
+      - ./src/static:/app/static
+    networks:
+      - fire-alert-network
+    profiles:
+      - web-only
+
+  # MySQL Database Service (shared by all configurations)
+  mysql-db:
+    image: mysql:8.0
+    container_name: smart-fire-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: passworddevops3321
+      MYSQL_DATABASE: firefighters
+      MYSQL_USER: webapp
+      MYSQL_PASSWORD: passworddevops3321
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./src/on-duty.sql:/docker-entrypoint-initdb.d/1-on-duty.sql
+      - ./src/off-duty.sql:/docker-entrypoint-initdb.d/2-off-duty.sql
+    networks:
+      - fire-alert-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Redis Cache Service (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: smart-fire-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - fire-alert-network
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  fire-alert-network:
+    driver: bridge
+
+# Usage Examples:
+# 
+# 1. Run combined service (IoT + Web in one container):
+#    docker-compose -f docker-compose.combined.yml up fire-alert-combined mysql-db
+#
+# 2. Run IoT-only service:
+#    docker-compose -f docker-compose.combined.yml --profile iot-only up fire-alert-iot-only
+#
+# 3. Run Web-only service:
+#    docker-compose -f docker-compose.combined.yml --profile web-only up fire-alert-web-only mysql-db
+#
+# 4. Run all services:
+#    docker-compose -f docker-compose.combined.yml --profile iot-only --profile web-only up
+#
+# 5. Build specific target:
+#    docker build --target combined -t smart-fire-combined -f Dockerfile.multistage .
+#    docker build --target iot-only -t smart-fire-iot -f Dockerfile.multistage .
+#    docker build --target web-only -t smart-fire-web -f Dockerfile.multistage .
